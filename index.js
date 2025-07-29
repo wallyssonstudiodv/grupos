@@ -1,13 +1,14 @@
 const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
 const axios = require('axios');
-const fs = require('fs');
 const P = require('pino');
+
+let sock = null; // socket global para evitar múltiplas instâncias
 
 async function startSock() {
     const { state, saveCreds } = await useMultiFileAuthState('./auth');
     const { version } = await fetchLatestBaileysVersion();
 
-    const sock = makeWASocket({
+    sock = makeWASocket({
         logger: P({ level: 'silent' }),
         version,
         printQRInTerminal: true,
@@ -25,7 +26,6 @@ async function startSock() {
 
         if (!messageContent) return;
 
-        // Enviar para o webhook
         try {
             const { data } = await axios.post('https://meudrivenet.x10.bz/botzap1/webhook.php', {
                 comando: messageContent,
@@ -56,12 +56,18 @@ async function startSock() {
         }
     });
 
-    sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
+    sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
+        console.log('Connection update:', connection);
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) {
-                startSock();
+                console.log('Reconectando...');
+                await startSock();
+            } else {
+                console.log('Desconectado permanentemente (logout)');
             }
+        } else if (connection === 'open') {
+            console.log('Conectado ao WhatsApp');
         }
     });
 
