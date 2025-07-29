@@ -56,10 +56,18 @@ async function startSock() {
         }
     });
 
-    sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
-        console.log('Connection update:', connection);
+    sock.ev.on('connection.update', async (update) => {
+        console.log('Connection update:', JSON.stringify(update, null, 2));
+
+        const { connection, lastDisconnect } = update;
+
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+            console.log('StatusCode:', statusCode);
+            console.log('Should reconnect:', shouldReconnect);
+
             if (shouldReconnect) {
                 console.log('Reconectando...');
                 await startSock();
