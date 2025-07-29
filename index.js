@@ -1,6 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const P = require('pino');
+const qrcode = require('qrcode-terminal'); // 📦 Importa QR Code terminal
 
 let sock = null;
 
@@ -11,9 +12,36 @@ async function startSock() {
     sock = makeWASocket({
         logger: P({ level: 'silent' }),
         version,
-        printQRInTerminal: true,
         auth: state
     });
+
+    // Exibe QR code visual
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            console.clear();
+            console.log('📱 Escaneie o QR Code abaixo com o WhatsApp:\n');
+            qrcode.generate(qr, { small: true });
+        }
+
+        if (connection === 'close') {
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+            console.log('🔌 Desconectado. Código:', statusCode);
+            if (shouldReconnect) {
+                console.log('🔁 Tentando reconectar...');
+                await startSock();
+            } else {
+                console.log('🚪 Logout detectado. Reconexão cancelada.');
+            }
+        } else if (connection === 'open') {
+            console.log('✅ Conectado ao WhatsApp com sucesso!');
+        }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify' || !messages[0]) return;
@@ -40,12 +68,10 @@ async function startSock() {
                 isGroup: isGroup
             });
 
-            // Envia resposta de texto
             if (data?.texto) {
                 await sock.sendMessage(from, { text: data.texto });
             }
 
-            // Envia mídia, se existir
             if (data?.midia) {
                 const url = data.midia;
                 const mimeType = data.tipo || 'image/jpeg';
@@ -56,8 +82,7 @@ async function startSock() {
                 const mediaType =
                     mimeType.startsWith('image') ? 'image' :
                     mimeType.startsWith('video') ? 'video' :
-                    mimeType.startsWith('audio') ? 'audio' :
-                    'document';
+                    mimeType.startsWith('audio') ? 'audio' : 'document';
 
                 await sock.sendMessage(from, {
                     [mediaType]: mediaBuffer.data,
@@ -67,30 +92,9 @@ async function startSock() {
             }
 
         } catch (err) {
-            console.error('Erro ao processar mensagem:', err);
+            console.error('❌ Erro ao processar mensagem:', err);
         }
     });
-
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
-
-        if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-            console.log('Desconectado. Código:', statusCode);
-            if (shouldReconnect) {
-                console.log('Tentando reconectar...');
-                await startSock();
-            } else {
-                console.log('Logout detectado. Reconexão cancelada.');
-            }
-        } else if (connection === 'open') {
-            console.log('✅ Conectado ao WhatsApp com sucesso!');
-        }
-    });
-
-    sock.ev.on('creds.update', saveCreds);
 }
 
 startSock();
