@@ -6,15 +6,19 @@
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": ["whatsapp", "baileys", "painel", "bot"],
+  "keywords": [
+    "whatsapp",
+    "baileys",
+    "painel",
+    "bot"
+  ],
   "author": "Wallysson S. de Oliveira",
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.6.0",
-    "axios": "^1.6.8",
+    "axios": "^1.11.0",
     "express": "^4.19.2",
     "node-cron": "^4.2.1",
-    "pino": "^8.17.0",
+    "pino": "^8.21.0",
     "qrcode": "^1.5.3"
   }
-}
