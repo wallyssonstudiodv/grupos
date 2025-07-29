@@ -1,40 +1,71 @@
-const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys')
-const fs = require('fs')
-const path = require('path')
+const { default: makeWASocket, useSingleFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
+const axios = require('axios');
+const fs = require('fs');
+const P = require('pino');
 
-async function iniciarBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth')
-  const { version } = await fetchLatestBaileysVersion()
+const { state, saveState } = useSingleFileAuthState('./auth.json');
 
-  const sock = makeWASocket({
-    auth: state,
-    version,
-    printQRInTerminal: true,
-  })
+async function startSock() {
+    const { version } = await fetchLatestBaileysVersion();
+    const sock = makeWASocket({
+        logger: P({ level: 'silent' }),
+        version,
+        printQRInTerminal: true,
+        auth: state
+    });
 
-  sock.ev.on('creds.update', saveCreds)
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify' || !messages[0]?.message) return;
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update
-    if (connection === 'close') {
-      const reason = lastDisconnect?.error?.output?.statusCode
-      if (reason !== 401) iniciarBot()
-    }
-  })
+        const msg = messages[0];
+        const from = msg.key.remoteJid;
+        const isGroup = from.endsWith('@g.us');
+        const sender = isGroup ? msg.key.participant : from;
+        const messageContent = msg.message.conversation || msg.message.extendedTextMessage?.text;
 
-  sock.ev.on('chats.set', async ({ chats }) => {
-    const grupos = chats.filter(chat => chat.id.endsWith('@g.us'))
+        if (!messageContent) return;
 
-    console.log(`\n📋 Lista de Grupos:`)
-    grupos.forEach((grupo, i) => {
-      console.log(`${i + 1}. Nome: ${grupo.name || 'Desconhecido'} | ID: ${grupo.id}`)
-    })
+        // Enviar para o webhook
+        try {
+            const { data } = await axios.post('https://meudrivenet.x10.bz/botzap1/webhook.php', {
+                comando: messageContent,
+                de: sender,
+                grupo: from,
+                isGroup: isGroup
+            });
 
-    // Salvar em arquivo
-    const dados = grupos.map(g => `${g.name || 'Desconhecido'} - ${g.id}`).join('\n')
-    fs.writeFileSync(path.join(__dirname, 'grupos.txt'), dados)
-    console.log(`\n✅ IDs dos grupos salvos em grupos.txt`)
-  })
+            if (data && data.texto) {
+                await sock.sendMessage(from, { text: data.texto });
+
+                if (data.midia && data.midia !== '') {
+                    const url = data.midia;
+                    const mediaBuffer = await axios.get(url, { responseType: 'arraybuffer' });
+                    const mimeType = data.tipo || 'image/jpeg';
+
+                    await sock.sendMessage(from, {
+                        [mimeType.startsWith('image') ? 'image' :
+                         mimeType.startsWith('video') ? 'video' :
+                         mimeType.startsWith('audio') ? 'audio' : 'document']: mediaBuffer.data,
+                        mimetype: mimeType,
+                        caption: data.caption || ''
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao comunicar com webhook:', err);
+        }
+    });
+
+    sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                startSock();
+            }
+        }
+    });
+
+    sock.ev.on('creds.update', saveState);
 }
 
-iniciarBot()
+startSock();
