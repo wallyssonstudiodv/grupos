@@ -2,7 +2,7 @@ const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion,
 const axios = require('axios');
 const P = require('pino');
 
-let sock = null; // socket global para evitar múltiplas instâncias
+let sock = null;
 
 async function startSock() {
     const { state, saveCreds } = await useMultiFileAuthState('./auth');
@@ -16,13 +16,19 @@ async function startSock() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify' || !messages[0]?.message) return;
+        if (type !== 'notify' || !messages[0]) return;
 
         const msg = messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+
         const from = msg.key.remoteJid;
         const isGroup = from.endsWith('@g.us');
         const sender = isGroup ? msg.key.participant : from;
-        const messageContent = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+        const messageContent = msg.message.conversation
+            || msg.message.extendedTextMessage?.text
+            || msg.message.imageMessage?.caption
+            || msg.message.videoMessage?.caption;
 
         if (!messageContent) return;
 
@@ -34,48 +40,53 @@ async function startSock() {
                 isGroup: isGroup
             });
 
-            if (data && data.texto) {
+            // Envia resposta de texto
+            if (data?.texto) {
                 await sock.sendMessage(from, { text: data.texto });
-
-                if (data.midia && data.midia !== '') {
-                    const url = data.midia;
-                    const mediaBuffer = await axios.get(url, { responseType: 'arraybuffer' });
-                    const mimeType = data.tipo || 'image/jpeg';
-
-                    await sock.sendMessage(from, {
-                        [mimeType.startsWith('image') ? 'image' :
-                         mimeType.startsWith('video') ? 'video' :
-                         mimeType.startsWith('audio') ? 'audio' : 'document']: mediaBuffer.data,
-                        mimetype: mimeType,
-                        caption: data.caption || ''
-                    });
-                }
             }
+
+            // Envia mídia, se existir
+            if (data?.midia) {
+                const url = data.midia;
+                const mimeType = data.tipo || 'image/jpeg';
+                const caption = data.caption || '';
+
+                const mediaBuffer = await axios.get(url, { responseType: 'arraybuffer' });
+
+                const mediaType =
+                    mimeType.startsWith('image') ? 'image' :
+                    mimeType.startsWith('video') ? 'video' :
+                    mimeType.startsWith('audio') ? 'audio' :
+                    'document';
+
+                await sock.sendMessage(from, {
+                    [mediaType]: mediaBuffer.data,
+                    mimetype: mimeType,
+                    caption: caption
+                });
+            }
+
         } catch (err) {
-            console.error('Erro ao comunicar com webhook:', err);
+            console.error('Erro ao processar mensagem:', err);
         }
     });
 
     sock.ev.on('connection.update', async (update) => {
-        console.log('Connection update:', JSON.stringify(update, null, 2));
-
         const { connection, lastDisconnect } = update;
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            console.log('StatusCode:', statusCode);
-            console.log('Should reconnect:', shouldReconnect);
-
+            console.log('Desconectado. Código:', statusCode);
             if (shouldReconnect) {
-                console.log('Reconectando...');
+                console.log('Tentando reconectar...');
                 await startSock();
             } else {
-                console.log('Desconectado permanentemente (logout)');
+                console.log('Logout detectado. Reconexão cancelada.');
             }
         } else if (connection === 'open') {
-            console.log('Conectado ao WhatsApp');
+            console.log('✅ Conectado ao WhatsApp com sucesso!');
         }
     });
 
