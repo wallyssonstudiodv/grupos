@@ -74,25 +74,39 @@ async function startSock() {
 
             if (data?.midia) {
                 const url = data.midia;
-                const mimeType = data.tipo || 'image/jpeg';
+                const mimeType = data.tipo || 'application/octet-stream';
                 const caption = data.caption || '';
 
-                const mediaBuffer = await axios.get(url, { responseType: 'arraybuffer' });
+                try {
+                    const response = await axios.get(url, { responseType: 'arraybuffer' });
+                    const buffer = Buffer.from(response.data, 'binary');
 
-                const mediaType =
-                    mimeType.startsWith('image') ? 'image' :
-                    mimeType.startsWith('video') ? 'video' :
-                    mimeType.startsWith('audio') ? 'audio' : 'document';
+                    const mediaType =
+                        mimeType.startsWith('image') ? 'image' :
+                        mimeType.startsWith('video') ? 'video' :
+                        mimeType.startsWith('audio') ? 'audio' : 'document';
 
-                await sock.sendMessage(from, {
-                    [mediaType]: mediaBuffer.data,
-                    mimetype: mimeType,
-                    caption: caption
-                });
+                    const messageData = {
+                        [mediaType]: buffer,
+                        mimetype: mimeType
+                    };
+
+                    if (caption && mediaType !== 'audio') {
+                        messageData.caption = caption;
+                    }
+
+                    if (mediaType === 'document') {
+                        messageData.fileName = url.split('/').pop() || 'arquivo';
+                    }
+
+                    await sock.sendMessage(from, messageData);
+                } catch (err) {
+                    console.error('❌ Erro ao baixar ou enviar mídia:', err.message);
+                }
             }
 
         } catch (err) {
-            console.error('❌ Erro ao processar mensagem:', err);
+            console.error('❌ Erro ao processar mensagem:', err.message);
         }
     });
 }
