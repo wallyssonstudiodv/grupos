@@ -1,12 +1,12 @@
-const { default: makeWASocket, useSingleFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const fs = require('fs');
 const P = require('pino');
 
-const { state, saveState } = useSingleFileAuthState('./auth.json');
-
 async function startSock() {
+    const { state, saveCreds } = await useMultiFileAuthState('./auth');
     const { version } = await fetchLatestBaileysVersion();
+
     const sock = makeWASocket({
         logger: P({ level: 'silent' }),
         version,
@@ -65,7 +65,7 @@ async function startSock() {
         }
     });
 
-    sock.ev.on('creds.update', saveState);
+    sock.ev.on('creds.update', saveCreds);
 }
 
 startSock();
