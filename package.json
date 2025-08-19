@@ -1,24 +1,25 @@
 {
-  "name": "grupos",
+  "name": "whatsapp-bot-ads",
   "version": "1.0.0",
-  "description": "gerenciar grupos",
-  "main": "server.js",
+  "description": "Bot de divulgação para WhatsApp com painel web",
+  "main": "bot.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node bot.js",
+    "dev": "nodemon bot.js"
   },
-  "keywords": [
-    "whatsapp",
-    "baileys",
-    "painel",
-    "bot"
-  ],
-  "author": "Wallysson S. de Oliveira",
+  "keywords": ["whatsapp", "bot", "ads", "baileys"],
+  "author": "Wallysson Studio Dv",
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.6.0",
-    "axios": "^1.11.0",
-    "express": "^4.19.2",
-    "node-cron": "^4.2.1",
-    "pino": "^8.21.0",
-    "qrcode": "^1.5.3"
+    "@hapi/boom": "^10.0.1",
+    "pino": "^8.15.0",
+    "qrcode": "^1.5.3",
+    "axios": "^1.5.0",
+    "form-data": "^4.0.0",
+    "node-cron": "^3.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
+}
